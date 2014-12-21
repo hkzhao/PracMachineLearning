@@ -1,0 +1,134 @@
+---
+title: "Practical Machine Learning Project"
+author: "Hk"
+date: "Saturday, December 20, 2014"
+output: html_document
+---
+
+## Background and Data
+
+This is the project report for Coursrea course Practical Machine Learning. The goal of this project is to train and evaluate machine learning models to predict manner of people doing exercises. The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. The training data was downloaded from https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv. And the test data was downloaded from https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv. [1]
+
+## Reproducibility and Preparation
+
+To ensure reproducibility, we always set seed before doing any randomized operations. 
+
+First we'd like to load the R packages and data.
+```{r results="hide"}
+library(caret)
+library(kernlab)
+library(rpart)
+library(rpart.plot)
+
+trainingFull <- read.csv("pml-training.csv", na.strings=c("NA","NaN", "", " "))
+testingFull <- read.csv("pml-testing.csv", na.strings=c("NA","NaN", "", " "))
+```
+
+Looking at the data, we've found out that some columns are mostly empty. So we'd like to extract the columns that are good. 
+
+```{r results="hide"}
+goodFull <- trainingFull[, colSums(is.na(trainingFull)) == 0]
+# Write good columns to file so that we can find out what are good
+# write.csv(goodFull, file="pml-training-good.csv")
+# Then we identified the following interested columns:
+colnames <- c("roll_belt","pitch_belt","yaw_belt","total_accel_belt",
+"gyros_belt_x","gyros_belt_y","gyros_belt_z","accel_belt_x","accel_belt_y",
+"accel_belt_z","magnet_belt_x","magnet_belt_y","magnet_belt_z","roll_arm",
+"pitch_arm","yaw_arm","total_accel_arm","gyros_arm_x","gyros_arm_y",
+"gyros_arm_z","accel_arm_x","accel_arm_y","accel_arm_z","magnet_arm_x",
+"magnet_arm_y","magnet_arm_z","roll_dumbbell","pitch_dumbbell",
+"yaw_dumbbell","total_accel_dumbbell","gyros_dumbbell_x",
+"gyros_dumbbell_y","gyros_dumbbell_z","accel_dumbbell_x","accel_dumbbell_y",
+"accel_dumbbell_z","magnet_dumbbell_x","magnet_dumbbell_y",
+"magnet_dumbbell_z","roll_forearm","pitch_forearm","yaw_forearm",
+"total_accel_forearm","gyros_forearm_x","gyros_forearm_y","gyros_forearm_z",
+"accel_forearm_x","accel_forearm_y","accel_forearm_z","magnet_forearm_x",
+"magnet_forearm_y","magnet_forearm_z","classe")
+
+# extract only interested columns from training data
+trainingTotal <- subset(goodFull, select=colnames)
+testingData <- subset(testingFull, select=colnames[1:(length(colnames)-1)])
+```
+
+Since the testing data only has 20 rows. We'd like to split the training data into two sub-sets, sub-training and sub-testing sets: 
+
+```{r results="hide"}
+set.seed(1234)
+inTrain <- createDataPartition(y=trainingTotal$classe, p=0.75, list=FALSE)
+subTraining <- trainingTotal[inTrain, ] 
+subTesting <- trainingTotal[-inTrain, ]
+```
+
+## Decission Tree
+
+Let's try a simple decission tree model. Being such a simple model, we would expect the accuracy to be on the lower side, around 70%. Let's try it out with 10-fold cross-validation. 
+
+```{r}
+set.seed(1234)
+train_control <- trainControl(method="cv", number=10)
+rpartFit1 <- train(classe ~ ., data=subTraining, method="rpart", tuneLength=12, trControl=train_control)
+
+rpartFit1
+```
+We test it on sub-test sets
+
+```{r}
+testPred1 <- predict(rpartFit1, subTesting, type="raw")
+confusionMatrix(testPred1, subTesting$classe)
+```
+
+The accuracy on test set is 0.735 with 95% conference interval (0.722, 0.747). 
+
+Here is a plot of the decision tree:
+```{r}
+rpart.plot(rpartFit1$finalModel, main="Decision Tree", extra=102, under=TRUE, faclen=0)
+```
+
+## Support Vector Machine
+
+Now let's try support vector machine. I'd expect that a support vector machine model to be have higher performance, as it is more advanced algorithm which can avoid over-fitting issue. Here is the code, with 10-fold cross-validation:
+
+```{r}
+set.seed(1234)
+train_control <- trainControl(method="cv", number=10)
+svmFit1 <- train(classe ~ ., data=subTraining, method="svmLinear", trControl=train_control)
+
+svmFit1
+```
+
+We test our support vector machine model with our sub-test data: 
+```{r}
+testSubmission2 <- predict(svmFit1, subTesting, type="raw")
+confusionMatrix(testSubmission2, subTesting$classe)
+```
+The accuracy on test set is 0.785 with 95% conference interval (0.774, 0.797), which is indeed better than that of the simple decision tree. 
+
+## Random Forest
+
+Finally we'd like to try random forest. Random forest models have reputation that can boost performance of simple decision trees. I'd expect a performance around 90%. Let's give it a try: 
+
+```{r}
+set.seed(1234)
+train_control <- trainControl(method="cv", number=10)
+rpartFit3 <- train(classe ~ ., data=subTraining, method="rf")
+
+
+```
+
+Since we have a model computed, lets test it on our test set: 
+
+``` {r}
+testSubmission3 <- predict(rpartFit3, subTesting, type="raw")
+confusionMatrix(testSubmission3, subTesting$classe)
+```
+
+The test performance turned to be surprisingly good. The overall accuracy is 99.4%, with 95% conference interval (0.992, 0.996). Random forest is indead the best model we have tried. 
+
+## References
+
+[1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+
+
+
+
